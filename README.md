@@ -10,4 +10,5 @@ Libraries used:
 - [Adafruit BME280](https://www.arduino.cc/reference/en/libraries/adafruit-bme280-library/)
 - [SD card](https://www.arduino.cc/reference/en/libraries/sd/)
 - [I2S/Microphone](https://docs.arduino.cc/learn/built-in-libraries/i2s)
-- [NTP](https://www.arduino.cc/reference/en/libraries/ntpclient/) (May be replaced)
+- [~~Old NTP~~](https://www.arduino.cc/reference/en/libraries/ntpclient/)
+- [NTP](https://github.com/arduino-libraries/WiFiNINA/blob/master/examples/WiFiUdpNtpClient/WiFiUdpNtpClient.ino)
