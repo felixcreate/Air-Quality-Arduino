@@ -2,6 +2,15 @@
 
 #include <WiFiNINA.h>
 #include <WiFiUdp.h>
+#include <Arduino_JSON.h>
+#include <ArduinoMqttClient.h>
+#include <ArduinoECCX08.h>
+#include <utility/ECCX08JWS.h>
+#include <DS3231.h>
+#include <Wire.h>
+#include <arduinoFFT.h>
+#include <I2S.h>
+
 
 //NTP globals
 WiFiUDP NTP;
@@ -12,8 +21,35 @@ byte packetBuffer[NTP_PACKET_SIZE];
 //NTP globals end
 
 
+//RTC globals
+DS3231 RTCWrite;
+RTClib RTCRead;
+//RTC globals end
+
+
+//MQTT globals
+const char broker[] = "mqtt.googleapis.com";
+WiFiSSLClient wifiSslClient;
+MqttClient    mqttClient(wifiSslClient);
+//MQTT globals end
+
+
+//I2S globals
+arduinoFFT FFT = arduinoFFT();
+const uint16_t samples = 256;
+const double samplingFrequency = 8000;
+double vReal[samples];
+double vImag[samples];
+//I2S globals end
+
 void setup() {
   Serial.begin(9600);
+
+  Wire.begin();
+  I2S.begin(I2S_PHILIPS_MODE, 8000, 32);
+
+  mqttClient.setId(calculateClientId());
+  
   Serial.println("Starting");
   if(connectWifi(5000)) {
     Serial.println("Connected");
@@ -22,22 +58,25 @@ void setup() {
     Serial.println("Failed");
   }
   NTP.begin(localPort);
-}
-
-void loop() {
   long epoch = getNTPepoch(5000);
   if(epoch == 0) {
     Serial.println("Request failed");
   }
   else {
     Serial.println(epoch);
+    RTCWrite.setEpoch(epoch);
   }
+}
+
+void loop() {
+  int offset = calculateI2SOffset();
+  Serial.println(calculateFreq(offset));
 }
 
 //Connect to wifi or return false if timeout expires
 bool connectWifi(int timeout) {
-  long start = millis();
-  long lastrun = millis();
+  unsigned long start = millis();
+  unsigned long lastrun = millis();
   int Status = WiFi.begin(ssid, pass);
   while(Status != WL_CONNECTED) {
     if((millis() - lastrun) > 500) {
@@ -71,8 +110,8 @@ unsigned long sendNTPpacket(IPAddress& address) {
 //Get epoch from ntp server or return 0 if request times out
 long getNTPepoch(int timeout) {
   sendNTPpacket(timeServer);
-  long start = millis();
-  long lastrun = millis();
+  unsigned long start = millis();
+  unsigned long lastrun = millis();
   int packetsize = NTP.parsePacket();
   while(!packetsize) {
     if((millis() - lastrun) > 500) {
@@ -88,4 +127,105 @@ long getNTPepoch(int timeout) {
   unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
   unsigned long secsSince1900 = highWord << 16 | lowWord;
   return secsSince1900 - 2208988800;
+}
+
+String calculateClientId() {
+  String clientId;
+
+  // Format:
+  //
+  //   projects/{project-id}/locations/{cloud-region}/registries/{registry-id}/devices/{device-id}
+  //
+
+  clientId += "projects/";
+  clientId += PROJECT_ID;
+  clientId += "/locations/";
+  clientId += CLOUD_REGION;
+  clientId += "/registries/";
+  clientId += REGISTRY_ID;
+  clientId += "/devices/";
+  clientId += DEVICE_ID;
+
+  return clientId;
+}
+
+unsigned long getRTCEpoch() {
+  return RTCRead.now().unixtime();
+}
+
+String calculateJWT() {
+  unsigned long now = getRTCEpoch();
+  
+  // calculate the JWT, based on:
+  //   https://cloud.google.com/iot/docs/how-tos/credentials/jwts
+  JSONVar jwtHeader;
+  JSONVar jwtClaim;
+
+  jwtHeader["alg"] = "ES256";
+  jwtHeader["typ"] = "JWT";
+
+  jwtClaim["aud"] = PROJECT_ID;
+  jwtClaim["iat"] = now;
+  jwtClaim["exp"] = now + (24L * 60L * 60L); // expires in 24 hours 
+
+  return ECCX08JWS.sign(0, JSON.stringify(jwtHeader), JSON.stringify(jwtClaim));
+}
+
+bool connectMQTT(int timeout) {
+  unsigned long start = millis();
+  unsigned long lastrun = millis();
+  while(!mqttClient.connected()) {
+    if((millis() - lastrun) > 1000) {
+      String jwt = calculateJWT();
+      mqttClient.setUsernamePassword("unused", jwt);
+      mqttClient.connect(broker, 8883);
+    }
+    if((millis() - start) > timeout) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void publishMessage() {
+  Serial.println("Publishing message");
+
+  // send message, the Print interface can be used to set the message contents
+  mqttClient.beginMessage("/devices/" + DEVICE_ID + "/state");
+  mqttClient.print("hello ");
+  mqttClient.print(millis());
+  mqttClient.endMessage();
+}
+
+int calculateI2SOffset() {
+  int offset;
+  for(int y = 0;y < 20;y++) {
+    unsigned long start = millis();
+    int readings = 0;
+    int64_t runningsum = 0;
+    while((millis() - start) < 100) {
+      int sample = I2S.read();
+      if(sample) {
+        runningsum += sample;
+        readings++;
+      }
+    }
+    offset = runningsum/readings;
+  }
+  return offset;
+}
+
+double calculateFreq(int offset) {
+  for(int i = 0; i < samples;i) {
+    int sample = I2S.read();
+    if(sample) {
+      vReal[i] = sample - offset;
+      vImag[i] = 0.0;
+      i++;
+    }
+  }
+  FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  /* Weigh data */
+  FFT.Compute(vReal, vImag, samples, FFT_FORWARD); /* Compute FFT */
+  FFT.ComplexToMagnitude(vReal, vImag, samples); /* Compute magnitudes */
+  return FFT.MajorPeak(vReal, samples, samplingFrequency);
 }
