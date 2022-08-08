@@ -1,3 +1,5 @@
+#include <ArduinoJson.h>
+
 #include "secrets.h"
 
 #include <WiFiNINA.h>
@@ -58,7 +60,7 @@ void setup() {
     Serial.println("Failed");
   }
   NTP.begin(localPort);
-  long epoch = getNTPepoch(5000);
+  unsigned long epoch = getNTPepoch(5000);
   if(epoch == 0) {
     Serial.println("Request failed");
   }
@@ -66,11 +68,13 @@ void setup() {
     Serial.println(epoch);
     RTCWrite.setEpoch(epoch);
   }
+  double test[] = {45.6, 34.5, 23, 12.6};
+  Serial.println(generateJSON(6545645, 3434534, test, test, test, 5, 1, 6, 34.3, 89));
 }
 
 void loop() {
-  int offset = calculateI2SOffset();
-  Serial.println(calculateFreq(offset));
+  //int offset = calculateI2SOffset();
+  //Serial.println(calculateFreq(offset));
 }
 
 //Connect to wifi or return false if timeout expires
@@ -108,7 +112,7 @@ unsigned long sendNTPpacket(IPAddress& address) {
 }
 
 //Get epoch from ntp server or return 0 if request times out
-long getNTPepoch(int timeout) {
+unsigned long getNTPepoch(int timeout) {
   sendNTPpacket(timeServer);
   unsigned long start = millis();
   unsigned long lastrun = millis();
@@ -228,4 +232,42 @@ double calculateFreq(int offset) {
   FFT.Compute(vReal, vImag, samples, FFT_FORWARD); /* Compute FFT */
   FFT.ComplexToMagnitude(vReal, vImag, samples); /* Compute magnitudes */
   return FFT.MajorPeak(vReal, samples, samplingFrequency);
+}
+
+String generateJSON(unsigned long timeStamp, unsigned long start, double temperature[4], double humidity[4], double pressure[4], int pm1, int pm25, int pm10, double spl, int frequency) {
+  StaticJsonDocument<500> doc;
+  doc["timestamp"] = timeStamp;
+  doc["start"] = start;
+
+  JsonObject Data = doc.createNestedObject("data");
+  
+  JsonArray Temp = Data.createNestedArray("temperature");
+  Temp.add(temperature[0]);
+  Temp.add(temperature[1]);
+  Temp.add(temperature[2]);
+  Temp.add(temperature[3]);
+
+  JsonArray Humidity = Data.createNestedArray("humidity");
+  Humidity.add(humidity[0]);
+  Humidity.add(humidity[1]);
+  Humidity.add(humidity[2]);
+  Humidity.add(humidity[3]);
+
+  JsonArray Pressure = Data.createNestedArray("pressure");
+  Pressure.add(pressure[0]);
+  Pressure.add(pressure[1]);
+  Pressure.add(pressure[2]);
+  Pressure.add(pressure[3]);
+
+  Data["spl"] = spl;
+  Data["frequency"] = frequency;
+
+  JsonObject Particulate = Data.createNestedObject("particulate");
+  Particulate["pm1.0"] = pm1;
+  Particulate["pm2.5"] = pm25;
+  Particulate["pm10.0"] = pm10;
+
+  String out = "";
+  serializeJson(doc, out);
+  return out;
 }
