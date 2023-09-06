@@ -435,79 +435,7 @@ void loop() {
     readingTriggers = 0;
     Serial.println("1"); //debug
     //Serial.println(millis() - start);
-
-    if(bme.takeForcedMeasurement()) {
-      tempAccumulator += bme.readTemperature() + 273.15;
-      tempReadingCounter++;
-      humidityAccumulator += bme.readHumidity();
-      humidityReadingCounter++;
-      pressureAccumulator += bme.readPressure();
-      pressureReadingCounter++;
-    }
-    if(pms.read(data)) {
-      pm1Accumulator += data.PM_SP_UG_1_0;
-      pm1ReadingCounter++;
-      pm25Accumulator += data.PM_SP_UG_2_5;
-      pm25ReadingCounter++;
-      pm10Accumulator += data.PM_SP_UG_10_0;
-      pm10ReadingCounter++;
-    }
-    bool isScdReady;
-    if(!scd40.getDataReadyFlag(isScdReady)) {
-      if(isScdReady) {
-        float scdtemptmp;
-        float scdhumiditytmp;
-        uint16_t co2tmp;
-        if(!scd40.readMeasurement(co2tmp, scdtemptmp, scdhumiditytmp)) {
-          if(co2tmp != 0) {
-            scdTempAccumulator += scdtemptmp + 273.15;
-            scdTempReadingCounter++;
-            scdHumidityAccumulator += scdhumiditytmp;
-            scdHumidityReadingCounter++;
-            co2Accumulator += co2tmp;
-            co2ReadingCounter++;
-            Serial.println(co2tmp); //debug
-          }
-        }
-      }
-    }
-    bool isSenReady;
-    if(!sen55.readDataReady(isSenReady)) {
-      if(isSenReady) {
-        float pm1tmp;
-        float pm25tmp;
-        float pm4tmp;
-        float pm10tmp;
-        float senhumiditytmp;
-        float sentemptmp;
-        float voctmp;
-        float noxtmp;
-        if(!sen55.readMeasuredValues(pm1tmp, pm25tmp, pm4tmp, pm10tmp, senhumiditytmp, sentemptmp, voctmp, noxtmp)) {
-          senpm1Accumulator += pm1tmp;
-          senpm1ReadingCounter++;
-          senpm25Accumulator += pm25tmp;
-          senpm25ReadingCounter++;
-          senpm4Accumulator += pm4tmp;
-          senpm4ReadingCounter++;
-          senpm10Accumulator += pm10tmp;
-          senpm10ReadingCounter++;
-          senTempAccumulator += sentemptmp + 273.15;
-          senTempReadingCounter++;
-          senHumidityAccumulator += senhumiditytmp;
-          senHumidityReadingCounter++;
-          if(!isnan(voctmp)) {
-            vocAccumulator += voctmp;
-            vocReadingCounter++;
-          }
-          if(!isnan(noxtmp)) {
-            noxAccumulator += noxtmp;
-            noxReadingCounter++;
-          }
-          Serial.println(pm25tmp);
-          Serial.println(noxtmp);
-        }
-      }
-    }
+    collectData();
 
     if(run15minute) {
       Serial.println("15"); //debug
@@ -795,6 +723,36 @@ void loop() {
     }
     printMemory(); // debug
   }
+  else if(readingTriggers > 2) {
+    readingTriggers = 0;
+    analogWrite(status_pin, 255);
+    delay(250);
+    analogWrite(status_pin, 0);
+    Serial.println("reset");
+    minuteCounter = 1;
+    readingStartEdge = getRTCEpoch() - 60;
+    tempReadingCounter = humidityReadingCounter = pressureReadingCounter = pm1ReadingCounter = pm25ReadingCounter = pm10ReadingCounter = scdTempReadingCounter = scdHumidityReadingCounter = co2ReadingCounter = senpm1ReadingCounter = senpm25ReadingCounter = senpm4ReadingCounter = senpm10ReadingCounter = senTempReadingCounter = senHumidityReadingCounter = vocReadingCounter = noxReadingCounter = tempAccumulator = humidityAccumulator = pressureAccumulator = pm1Accumulator = pm25Accumulator = pm10Accumulator = scdTempAccumulator = scdHumidityAccumulator = co2Accumulator = senpm1Accumulator = senpm25Accumulator = senpm4Accumulator = senpm10Accumulator = senTempAccumulator = senHumidityAccumulator = vocAccumulator = noxAccumulator = 0;
+    for(int i=0;i<4;i++) {
+      temps[i] = -1.0;
+      humidities[i] = -1.0;
+      pressures[i] = -1.0;
+      pm1s[i] = -1.0;
+      pm25s[i] = -1.0;
+      pm10s[i] = -1.0;
+      scdTemps[i] = -1.0;
+      scdHumidities[i] = -1.0;
+      co2s[i] = -1.0;
+      senpm1s[i] = -1.0;
+      senpm25s[i] = -1.0;
+      senpm4s[i] = -1.0;
+      senpm10s[i] = -1.0;
+      senTemps[i] = -1.0;
+      senHumidities[i] = -1.0;
+      vocs[i] = -1.0;
+      noxs[i] = -1.0;
+    }
+    collectData();
+  }
   //if((millis() - lastMillis) >= 5000) {
     //lastMillis = millis();
     //publishMessage();  
@@ -904,6 +862,80 @@ void publishMessage() {
   mqttClient.print("hello ");
   mqttClient.print(millis());
   mqttClient.endMessage();
+}
+void collectData() {
+  if(bme.takeForcedMeasurement()) {
+    tempAccumulator += bme.readTemperature() + 273.15;
+    tempReadingCounter++;
+    humidityAccumulator += bme.readHumidity();
+    humidityReadingCounter++;
+    pressureAccumulator += bme.readPressure();
+    pressureReadingCounter++;
+  }
+  if(pms.read(data)) {
+    pm1Accumulator += data.PM_SP_UG_1_0;
+    pm1ReadingCounter++;
+    pm25Accumulator += data.PM_SP_UG_2_5;
+    pm25ReadingCounter++;
+    pm10Accumulator += data.PM_SP_UG_10_0;
+    pm10ReadingCounter++;
+  }
+  bool isScdReady;
+  if(!scd40.getDataReadyFlag(isScdReady)) {
+    if(isScdReady) {
+      float scdtemptmp;
+      float scdhumiditytmp;
+      uint16_t co2tmp;
+      if(!scd40.readMeasurement(co2tmp, scdtemptmp, scdhumiditytmp)) {
+        if(co2tmp != 0) {
+          scdTempAccumulator += scdtemptmp + 273.15;
+          scdTempReadingCounter++;
+          scdHumidityAccumulator += scdhumiditytmp;
+          scdHumidityReadingCounter++;
+          co2Accumulator += co2tmp;
+          co2ReadingCounter++;
+          Serial.println(co2tmp); //debug
+        }
+      }
+    }
+  }
+  bool isSenReady;
+  if(!sen55.readDataReady(isSenReady)) {
+    if(isSenReady) {
+      float pm1tmp;
+      float pm25tmp;
+      float pm4tmp;
+      float pm10tmp;
+      float senhumiditytmp;
+      float sentemptmp;
+      float voctmp;
+      float noxtmp;
+      if(!sen55.readMeasuredValues(pm1tmp, pm25tmp, pm4tmp, pm10tmp, senhumiditytmp, sentemptmp, voctmp, noxtmp)) {
+        senpm1Accumulator += pm1tmp;
+        senpm1ReadingCounter++;
+        senpm25Accumulator += pm25tmp;
+        senpm25ReadingCounter++;
+        senpm4Accumulator += pm4tmp;
+        senpm4ReadingCounter++;
+        senpm10Accumulator += pm10tmp;
+        senpm10ReadingCounter++;
+        senTempAccumulator += sentemptmp + 273.15;
+        senTempReadingCounter++;
+        senHumidityAccumulator += senhumiditytmp;
+        senHumidityReadingCounter++;
+        if(!isnan(voctmp)) {
+          vocAccumulator += voctmp;
+          vocReadingCounter++;
+        }
+        if(!isnan(noxtmp)) {
+          noxAccumulator += noxtmp;
+          noxReadingCounter++;
+        }
+        Serial.println(pm25tmp);
+        Serial.println(noxtmp);
+      }
+    }
+  }
 }
 /*void generateJSON(uint32_t startEdge, uint32_t endEdge) {
   jsonDocument["s"] = startEdge;
