@@ -12,3 +12,10 @@ Libraries used:
 - [I2S/Microphone](https://docs.arduino.cc/learn/built-in-libraries/i2s)
 - [~~Old NTP~~](https://www.arduino.cc/reference/en/libraries/ntpclient/)
 - [NTP](https://github.com/arduino-libraries/WiFiNINA/blob/master/examples/WiFiUdpNtpClient/WiFiUdpNtpClient.ino)
+
+Create a "secrets.h" in main/ for SSID name, password, MQTT broker address, and JWT secret:<br/>
+```
+#define NETWORK_SSID "YOUR_SSID"
+#define NETWORK_PASS "PASS"
+#define MQTT_BROKER IPAddress(0, 0, 0, 0)
+#define JWT_SECRET ""
