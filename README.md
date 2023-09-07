@@ -1,6 +1,6 @@
 Arduino firmware for [this project](https://github.com/felixcreate/Air-Quality-Monitor)
 
-##### Libraries used:
+#### Libraries used:
 
 - [MQTT](https://www.arduino.cc/reference/en/libraries/arduinomqttclient/)
 - [ArduinoJson](https://arduinojson.org/)
@@ -26,5 +26,6 @@ To use this you must create a "secrets.h" in main/ for your network's SSID and p
 #define MQTT_BROKER IPAddress(0, 0, 0, 0)
 #define JWT_SECRET ""
 ```
+<br>
 
 This was only tested on an Arduino Nano 33 IoT, although it should work on any Arduino with a SAMD processor and an wifi/ethernet module or shield that's compatible with the WiFiNINA library.
