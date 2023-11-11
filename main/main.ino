@@ -9,7 +9,6 @@
 #define USING_TIMER_TCC2        false    
 
 #define status_pin 9
-#define det_pin A6
 
 //#include <ArduinoECCX08.h>
 //#include <utility/ECCX08JWS.h>
@@ -63,6 +62,8 @@ Adafruit_BME280 bme;
 //NTP globals
 WiFiUDP NTPUdp;
 NTPClient timeClient(NTPUdp, "pool.ntp.org", 0, 0);
+IPAddress primaryDNS(8, 8, 8, 8);
+IPAddress secondaryDNS(8, 8, 4, 4);
 
 //RTC globals
 DS3231 myRTC;
@@ -161,6 +162,8 @@ void setup() {
   pinMode(status_pin, OUTPUT);
 
   Serial.begin(9600); //Debug
+  Serial1.begin(9600); // Start communication with PMS sensor
+  pms.passiveMode();
   while (!Serial); //
   Serial.println("start");
 
@@ -179,13 +182,16 @@ void setup() {
   //if (!ECCX08.begin()) {  //Should come first since RTC is can't handle the I2C clock speed this sets (shouldn't be an problem with all the redundancy for this issue)
   //  while(1);
   //}
-  Serial1.begin(9600); // Start communication with PMS sensor
-  while(!pms.read(data)) { //Wait for sensor to respond
+  pms.requestRead();
+  delay(2000);
+  if(!pms.readUntil(data, 10000)) {
     Serial.println("pms no");
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
+    while(1) {
+      analogWrite(status_pin, 0);
+      delay(100);
+      analogWrite(status_pin, 255);
+      delay(100);
+    }
   }
 
   Wire.begin();
@@ -252,7 +258,6 @@ void setup() {
     analogWrite(status_pin, 255);
     delay(100);
   }}
-  pinMode(det_pin, INPUT);
   if(!SD.begin(4)) {while(1) {
     analogWrite(status_pin, 0);
     delay(100);
@@ -266,8 +271,9 @@ void setup() {
   //Serial.println(getRTCEpoch());
   //Serial.println(calculateJWT(getRTCEpoch()));
   //Serial.println(getRTCEpoch());
+  WiFi.setDNS(primaryDNS, secondaryDNS);
   mqttClient.setId("hamhigh1");
-  mqttClient.setConnectionTimeout(4000); // 4000
+  mqttClient.setConnectionTimeout(5000); // 10000
   WiFi.setTimeout(5000);
   timeClient.setUpdateInterval(0);
   timeClient.begin();
@@ -291,6 +297,18 @@ void setup() {
   setRTCEpoch(timeClient.getEpochTime());
   startupEpoch = timeClient.getEpochTime();
   lastSen55Cleaning = timeClient.getEpochTime();
+  
+  Serial.println("Sending startup message");
+  if(connectMQTT(timeClient.getEpochTime())) {
+    if(mqttClient.beginMessage("airquality/hamhigh1/startup", 1, false, 1)) {
+      mqttClient.write('_');
+      if(mqttClient.endMessage()) {
+        Serial.println("Message sent");
+      }
+    }
+    mqttClient.stop();
+  }
+
   //File unsentFile = SD.open("unsent");
   //if(unsentFile) {
   //  while(unsentFile.available()) {
@@ -316,7 +334,6 @@ void setup() {
   analogWrite(status_pin, 0);
   led_state = false;
   //Timer configure and start
-  //Why did I decide to use internal timers?
   //attachInterrupt(digitalPinToInterrupt(3), Timer_Handler, FALLING);
   ITimer.attachInterruptInterval_MS(30000, Timer_Handler); //60 seconds per trigger
   //start = millis(); //debug
@@ -358,8 +375,6 @@ void setup() {
   bme.takeForcedMeasurement();
   //Serial.println(data.PM_SP_UG_2_5);
   Serial.println(bme.readTemperature());
-  pms.read(data);
-  Serial.println(data.PM_SP_UG_2_5);
   bool isScdReady;
     if(!scd40.getDataReadyFlag(isScdReady)) {
       if(isScdReady) {
@@ -581,13 +596,11 @@ void loop() {
       String readingFilename = String(endEdgeTime, 16);
       Serial.println(readingFilename); // debug
       bool stored = false;
-      if(digitalRead(det_pin)) {
-        File readingLog = SD.open(readingFilename, O_WRITE | O_CREAT);
-        if(readingLog) {
-          serializeJson(jsonDocument, readingLog);
-          readingLog.close();
-          stored = true;
-        }
+      File readingLog = SD.open(readingFilename, O_WRITE | O_CREAT);
+      if(readingLog) {
+        serializeJson(jsonDocument, readingLog);
+        readingLog.close();
+        stored = true;
       }
       printMemory(); // debug
       bool sent = false;
@@ -596,7 +609,7 @@ void loop() {
         if(getNTPTime(5, 100)) { // max 5.5 seconds
           printMemory(); // debug
           setRTCEpoch(timeClient.getEpochTime());
-          if(connectMQTT()) {
+          if(connectMQTT(timeClient.getEpochTime())) {
             printMemory(); // debug
             if(mqttClient.beginMessage("airquality/hamhigh1/data", measureJson(jsonDocument), false, 2)) {
               printMemory(); // debug
@@ -618,14 +631,12 @@ void loop() {
       }
       if(!sent) {
         if(stored) {
-          if(digitalRead(det_pin)) {
-            File unsent = SD.open("unsent", O_READ | O_WRITE | O_APPEND);
-            if(unsent) {
-              Serial.println("Saving as unsent"); // debug
-              unsent.print(readingFilename);
-              unsent.print(';');
-              unsent.close();
-            }
+          File unsent = SD.open("unsent", O_READ | O_WRITE | O_APPEND);
+          if(unsent) {
+            Serial.println("Saving as unsent"); // debug
+            unsent.print(readingFilename);
+            unsent.print(';');
+            unsent.close();
           }
         }
       }
@@ -660,70 +671,69 @@ void loop() {
     }
     if((minuteCounter > 5) && (minuteCounter < 55)) {
       Serial.println("tried");
-      if(digitalRead(det_pin)) {
-        File unsent = SD.open("unsent");
-        Serial.println("try open");
-        if(unsent) {
-          Serial.println("opened");
-          if(unsent.size() != 0) {
-            Serial.println("has stuff");
-            if(WiFi.status() == WL_CONNECTED) {
-              if(getNTPTime(5, 100)) {
-                if(connectMQTT()) {
-                  char readingName[9] = {'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'};
-                  unsent.read(readingName, 8);
-                  Serial.println(readingName); // debug
-                  File unsentReading = SD.open(readingName);
-                  if(unsentReading) {
-                    if(mqttClient.beginMessage("airquality/hamhigh1/unsent", unsentReading.size(), false, 2)) {
-                      WriteBufferingStream bufferedMqtt{mqttClient, 64};
-                      while(unsentReading.available()) {
-                        bufferedMqtt.write(unsentReading.read());
-                      }
-                      unsentReading.close();
-                      bufferedMqtt.flush();
-                      if(mqttClient.endMessage()) {
-                        Serial.println("next");
-                        File unsentTMP = SD.open("tmp", O_READ | O_WRITE | O_CREAT | O_TRUNC);
-                        if(unsentTMP) {
-                          Serial.println("next open");
-                          unsent.seek(unsent.position() + 1);
-                          while(unsent.available()) {
-                            char fileBuffer[64];
-                            int size = unsent.read(fileBuffer, 64);
-                            unsentTMP.write(fileBuffer, size);
-                            printMemory(); // debug
-                          }
-                          unsentTMP.close();
-                          unsent.close();
-                          unsentTMP = SD.open("tmp");
-                          unsent = SD.open("unsent", O_TRUNC | O_WRITE);
-                          while(unsentTMP.available()) {
-                            char fileBuffer[64];
-                            int size = unsentTMP.read(fileBuffer, 64);
-                            unsent.write(fileBuffer, size);
-                            printMemory(); // debug
-                          }
-                          unsent.close();
-                          unsentTMP.close();
-                          printMemory(); // debug
-                        }
-                      }
+      File unsent = SD.open("unsent");
+      Serial.println("try open");
+      if(unsent) {
+        Serial.println("opened");
+        if(unsent.size() != 0) {
+          Serial.println("has stuff");
+          if(WiFi.status() == WL_CONNECTED) {
+            if(getNTPTime(5, 100)) {
+              if(connectMQTT(timeClient.getEpochTime())) {
+                char readingName[9] = {'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'};
+                unsent.read(readingName, 8);
+                Serial.println(readingName); // debug
+                File unsentReading = SD.open(readingName);
+                if(unsentReading) {
+                  if(mqttClient.beginMessage("airquality/hamhigh1/unsent", unsentReading.size(), false, 2)) {
+                    WriteBufferingStream bufferedMqtt{mqttClient, 64};
+                    while(unsentReading.available()) {
+                      bufferedMqtt.write(unsentReading.read());
                     }
                     unsentReading.close();
+                    bufferedMqtt.flush();
+                    if(mqttClient.endMessage()) {
+                      Serial.println("next");
+                      File unsentTMP = SD.open("tmp", O_READ | O_WRITE | O_CREAT | O_TRUNC);
+                      if(unsentTMP) {
+                        Serial.println("next open");
+                        unsent.seek(unsent.position() + 1);
+                        while(unsent.available()) {
+                          char fileBuffer[64];
+                          int size = unsent.read(fileBuffer, 64);
+                          unsentTMP.write(fileBuffer, size);
+                          printMemory(); // debug
+                        }
+                        unsentTMP.close();
+                        unsent.close();
+                        unsentTMP = SD.open("tmp");
+                        unsent = SD.open("unsent", O_TRUNC | O_WRITE);
+                        while(unsentTMP.available()) {
+                          char fileBuffer[64];
+                          int size = unsentTMP.read(fileBuffer, 64);
+                          unsent.write(fileBuffer, size);
+                          printMemory(); // debug
+                        }
+                        unsent.close();
+                        unsentTMP.close();
+                        printMemory(); // debug
+                      }
+                    }
                   }
-                  mqttClient.stop();
+                  unsentReading.close();
                 }
+                mqttClient.stop();
               }
             }
           }
-          unsent.close();
         }
+        unsent.close();
       }
     }
     printMemory(); // debug
   }
   else if(readingTriggers > 2) {
+    Serial.println("overtime");
     readingTriggers = 0;
     analogWrite(status_pin, 255);
     delay(250);
@@ -752,6 +762,7 @@ void loop() {
       noxs[i] = -1.0;
     }
     collectData();
+    Serial.println("back to normal");
   }
   //if((millis() - lastMillis) >= 5000) {
     //lastMillis = millis();
@@ -830,12 +841,12 @@ bool getNTPTime(int8_t tries, uint32_t wait) {
   return state;
 }
 
-int connectMQTT() {
+int connectMQTT(uint32_t now) {
   printMemory(); // debug
   Serial.print("Attempting to connect to MQTT broker: "); // debug
   Serial.println(" "); // debug
   printMemory(); // debug
-  generateJWT(RTClib::now().unixtime());
+  generateJWT(now);
   mqttClient.setUsernamePassword("unused", jwt.out);
   printMemory(); // debug
 
@@ -872,7 +883,9 @@ void collectData() {
     pressureAccumulator += bme.readPressure();
     pressureReadingCounter++;
   }
-  if(pms.read(data)) {
+  pms.requestRead();
+  delay(1000);
+  if(pms.readUntil(data, 5000)) {
     pm1Accumulator += data.PM_SP_UG_1_0;
     pm1ReadingCounter++;
     pm25Accumulator += data.PM_SP_UG_2_5;
