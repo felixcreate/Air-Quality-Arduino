@@ -78,9 +78,10 @@ SAMDTimer ITimer(TIMER_TCC1);
 volatile uint8_t readingTriggers = 0;
 
 //Other globals
-uint32_t startupEpoch;
+//uint32_t startupEpoch;
 //uint16_t unsentCounter = 0;
 uint8_t minuteCounter = 0;
+uint8_t hourCounter = 0;
 //File openFile; 
 
 
@@ -157,8 +158,11 @@ void Timer_Handler() {
   //}
 }
 
+// The general strategy for setup() is to initialize everything and check to make sure everything is functioning normally. 
+// If the program detects that it was reset via code (checks for a valid RTC time), it will not purposefully freeze if anything is not working normally (with the exception of SD card checks).
+// Normally (e.g. a power cycle) if any sensor doesn't respond, the program will freeze and rapidly blink the status led. 
 void setup() {
-  randomSeed(analogRead(A2)); //seed the pseudo random number generator
+  randomSeed(analogRead(A2)); //seed the pseudo random number generator with the value of a floating pin
   pinMode(status_pin, OUTPUT);
 
   Serial.begin(9600); //Debug
@@ -167,7 +171,30 @@ void setup() {
   while (!Serial); //
   Serial.println("start");
 
-  for(int i=0;i<600;i++) { // 6 second to let all sensors finish initializing and to let status led show that the program has started
+  Wire.begin();
+  Wire.setClock(100000u);
+
+  Wire.beginTransmission(0x68);
+  if(Wire.endTransmission() != 0) {
+    while(1) {
+      analogWrite(status_pin, 0);
+      delay(100);
+      analogWrite(status_pin, 255);
+      delay(100);
+    }
+  }
+  myRTC.setClockMode(false); // 24 hour clock mode, not that it really matters for this
+  //myRTC.enableOscillator(true, false, 0);
+  bool softreset;
+  if(getRTCEpoch() > 1000000000ul) {
+    softreset = true;
+    Serial.println("softreset"); //debug
+  }
+  else {
+    softreset = false;
+  }
+
+  for(int i=0;i<600;i++) { // 6 seconds to let all sensors finish initializing and to let status led show that the program has started
     int part = i % 200; // 0 - 199
     if(part < 100) {
       analogWrite(status_pin, (part*255)/100);
@@ -186,35 +213,24 @@ void setup() {
   delay(2000);
   if(!pms.readUntil(data, 10000)) {
     Serial.println("pms no");
-    while(1) {
-      analogWrite(status_pin, 0);
-      delay(100);
-      analogWrite(status_pin, 255);
-      delay(100);
+    if(!softreset) {
+      while(1) {
+        analogWrite(status_pin, 0);
+        delay(100);
+        analogWrite(status_pin, 255);
+        delay(100);
+      }
     }
   }
 
-  Wire.begin();
-  Wire.setClock(100000u);
-
-  Wire.beginTransmission(0x68);
-  if(Wire.endTransmission() != 0) {
-    while(1) {
-      analogWrite(status_pin, 0);
-      delay(100);
-      analogWrite(status_pin, 255);
-      delay(100);
-    }
-  }
-  myRTC.setClockMode(false); // 24 hour clock mode, not that it really matters for this
-  //myRTC.enableOscillator(true, false, 0);
-
-  if(!bme.begin(0x77, &Wire)) { // Check for and setup BME280 
-    while(1) {
-      analogWrite(status_pin, 0);
-      delay(100);
-      analogWrite(status_pin, 255);
-      delay(100);
+  if(!bme.begin(0x77, &Wire)) { // Check for and setup BME280
+    if(!softreset) {
+      while(1) {
+        analogWrite(status_pin, 0);
+        delay(100);
+        analogWrite(status_pin, 255);
+        delay(100);
+      }
     }
   }
   bme.setSampling(Adafruit_BME280::MODE_FORCED, //configure BME280 for weather measuring
@@ -224,46 +240,81 @@ void setup() {
                   Adafruit_BME280::FILTER_OFF);
   
   scd40.begin(Wire);
-  if(scd40.stopPeriodicMeasurement()) {while(1) {
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
-  }}
-  scd40.setSensorAltitude(195);
-  if(scd40.startPeriodicMeasurement()) {while(1) {
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
-  }}
+  if(scd40.stopPeriodicMeasurement()) {
+    if(!softreset) {
+      while(1) {
+        analogWrite(status_pin, 0);
+        delay(100);
+        analogWrite(status_pin, 255);
+        delay(100);
+      }
+    }
+  }
+  else {
+    scd40.setSensorAltitude(195);
+    if(scd40.startPeriodicMeasurement()) {
+      if(!softreset) {
+        while(1) {
+          analogWrite(status_pin, 0);
+          delay(100);
+          analogWrite(status_pin, 255);
+          delay(100);
+        }
+      }
+    }
+  }
 
   sen55.begin(Wire);
-  if(sen55.deviceReset()) {while(1) {
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
-  }}
+  if(sen55.deviceReset()) {
+    if(!softreset) {
+      while(1) {
+        analogWrite(status_pin, 0);
+        delay(100);
+        analogWrite(status_pin, 255);
+        delay(100);
+      }
+    }
+  }
   delay(1000);
-  if(sen55.setFanAutoCleaningInterval(0)) {while(1) {
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
-  }}
-  if(sen55.startMeasurement()) {while(1) {
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
-  }}
+  if(sen55.setFanAutoCleaningInterval(0)) {
+    if(!softreset) {
+      while(1) {
+        analogWrite(status_pin, 0);
+        delay(100);
+        analogWrite(status_pin, 255);
+        delay(100);
+      }
+    }
+  }
+  if(sen55.startMeasurement()) {
+    if(!softreset) {
+      while(1) {
+        analogWrite(status_pin, 0);
+        delay(100);
+        analogWrite(status_pin, 255);
+        delay(100);
+      }
+    }
+  }
+
   if(!SD.begin(4)) {while(1) {
     analogWrite(status_pin, 0);
     delay(100);
     analogWrite(status_pin, 255);
     delay(100);
   }} // Start SD
+  File lastClean = SD.open("clean");
+  if(lastClean) {
+    char cleanBuffer[lastClean.size() + 1];
+    cleanBuffer[lastClean.size()] = '\0';
+    lastClean.read(cleanBuffer, lastClean.size());
+    lastSen55Cleaning = atol(cleanBuffer);
+    lastClean.close();
+  }
+  else {
+    lastSen55Cleaning = getRTCEpoch();
+  }
+  Serial.println(lastSen55Cleaning); //debug
   //setRTCEpoch(1674536397UL);   //debug
   //bme.takeForcedMeasurement();
   //Serial.println(data.PM_SP_UG_2_5);
@@ -277,38 +328,42 @@ void setup() {
   WiFi.setTimeout(5000);
   timeClient.setUpdateInterval(0);
   timeClient.begin();
-  Serial.println("Connecting to wifi");
-  while(!connectWiFi(3, 500)) {
-    Serial.println("No wifi");
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
-  }
-  Serial.println("Getting ntp");
-  while(!getNTPTime(5, 100)) {
-    Serial.println("No ntp");
-    analogWrite(status_pin, 0);
-    delay(100);
-    analogWrite(status_pin, 255);
-    delay(100);
-  }
-  Serial.println("Network ok");
-  setRTCEpoch(timeClient.getEpochTime());
-  startupEpoch = timeClient.getEpochTime();
-  lastSen55Cleaning = timeClient.getEpochTime();
-  
-  Serial.println("Sending startup message");
-  if(connectMQTT(timeClient.getEpochTime())) {
-    if(mqttClient.beginMessage("airquality/hamhigh1/startup", 1, false, 1)) {
-      mqttClient.write('_');
-      if(mqttClient.endMessage()) {
-        Serial.println("Message sent");
-      }
-    }
-    mqttClient.stop();
-  }
 
+  Serial.println("Connecting to wifi");
+  if(!softreset) {
+    while(!connectWiFi(3, 500)) {
+      Serial.println("No wifi");
+      analogWrite(status_pin, 0);
+      delay(100);
+      analogWrite(status_pin, 255);
+      delay(100);
+    }
+    Serial.println("Getting ntp");
+    while(!getNTPTime(5, 100)) {
+      Serial.println("No ntp");
+      analogWrite(status_pin, 0);
+      delay(100);
+      analogWrite(status_pin, 255);
+      delay(100);
+    }
+    Serial.println("Network ok");
+    setRTCEpoch(timeClient.getEpochTime());
+    //startupEpoch = timeClient.getEpochTime();
+
+    Serial.println("Sending startup message");
+    if(connectMQTT(timeClient.getEpochTime())) {
+      if(mqttClient.beginMessage("airquality/hamhigh1/startup", 1, false, 1)) {
+        mqttClient.write('_');
+        if(mqttClient.endMessage()) {
+          Serial.println("Message sent");
+        }
+      }
+      mqttClient.stop();
+    }
+  }
+  else {
+    WiFi.begin(ssid, pass);
+  }
   //File unsentFile = SD.open("unsent");
   //if(unsentFile) {
   //  while(unsentFile.available()) {
@@ -321,21 +376,23 @@ void setup() {
   //else {
   //  while(1);
   //}
-  for(int i=0;i<6000;i++) { // 60 seconds for sensor to start getting good readings
-    int part = i % 200; // 0 - 199
-    if(part < 100) {
-      analogWrite(status_pin, (part*255)/100);
+  if(!softreset) {
+    for(int i=0;i<6000;i++) { // 60 seconds for sensor to start getting good readings
+      int part = i % 200; // 0 - 199
+      if(part < 100) {
+        analogWrite(status_pin, (part*255)/100);
+      }
+      else {
+        analogWrite(status_pin, 255 - (((part - 100)*255)/100));
+      }
+      delay(10);
     }
-    else {
-      analogWrite(status_pin, 255 - (((part - 100)*255)/100));
-    }
-    delay(10);
   }
   analogWrite(status_pin, 0);
   led_state = false;
   //Timer configure and start
   //attachInterrupt(digitalPinToInterrupt(3), Timer_Handler, FALLING);
-  ITimer.attachInterruptInterval_MS(30000, Timer_Handler); //60 seconds per trigger
+  ITimer.attachInterruptInterval_MS(60000, Timer_Handler); //60 seconds per trigger
   //start = millis(); //debug
   //https://gist.github.com/nonsintetic/ad13e70f164801325f5f552f84306d6f
   /*GCLK->CLKCTRL.reg = (uint16_t) (GCLK_CLKCTRL_CLKEN | GCLK_CLKCTRL_GEN_GCLK0 | GCLK_CLKCTRL_ID(GCM_TC4_TC5)) ;
@@ -363,8 +420,12 @@ void setup() {
   while (TC5->COUNT16.STATUS.reg & TC_STATUS_SYNCBUSY);
   TC5->COUNT16.CTRLA.reg |= TC_CTRLA_ENABLE;
   while (TC5->COUNT16.STATUS.reg & TC_STATUS_SYNCBUSY);*/
-
-  readingStartEdge = timeClient.getEpochTime();
+  if(softreset){
+    readingStartEdge = getRTCEpoch();
+  }
+  else {
+    readingStartEdge = timeClient.getEpochTime();
+  }
   //digitalWrite(LED_BUILTIN, HIGH);
 
 
@@ -480,9 +541,17 @@ void loop() {
       Serial.println("60"); //debug
       printMemory(); // debug
       uint32_t endEdgeTime = getRTCEpoch();
-      if((endEdgeTime - lastSen55Cleaning) > 604800) {
-        sen55.startFanCleaning();
-        lastSen55Cleaning = endEdgeTime;
+      if((hourCounter > 0) && (hourCounter < 23)) {
+        if((endEdgeTime - lastSen55Cleaning) > 604800) {
+          Serial.println("cleaning"); // debug
+          sen55.startFanCleaning();
+          lastSen55Cleaning = endEdgeTime;
+          File lastCleaning = SD.open("clean", O_TRUNC | O_WRITE);
+          if(lastCleaning) {
+            lastCleaning.print(lastSen55Cleaning);
+            lastCleaning.close();
+          }
+        }
       }
       printMemory(); // debug
 
@@ -642,6 +711,7 @@ void loop() {
       }
       Serial.println("done"); // debug
       readingStartEdge = endEdgeTime;
+      hourCounter++;
       for(int i=0;i<4;i++) {
         //Serial.println("Period " + (i + 1));
         //Serial.println(temps[i]);
@@ -667,6 +737,10 @@ void loop() {
         senHumidities[i] = -1.0;
         vocs[i] = -1.0;
         noxs[i] = -1.0;
+      }
+      if(hourCounter == 24) {  //SHOULD BE 24
+        Serial.println("reseting"); //debug
+        NVIC_SystemReset();
       }
     }
     if((minuteCounter > 5) && (minuteCounter < 55)) {
