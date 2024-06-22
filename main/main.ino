@@ -252,7 +252,7 @@ void setup() {
   }
   else {
     scd40.setSensorAltitude(195);
-    if(scd40.startPeriodicMeasurement()) {
+    /*if(scd40.startLowPowerPeriodicMeasurement()) {
       if(!softreset) {
         while(1) {
           analogWrite(status_pin, 0);
@@ -261,7 +261,7 @@ void setup() {
           delay(100);
         }
       }
-    }
+    }*/
   }
 
   sen55.begin(Wire);
@@ -296,6 +296,27 @@ void setup() {
       }
     }
   }
+
+  //scd40.measureSingleShot();
+  /*bool isScdReady = 0;
+  //while(!isScdReady) {
+    if(!scd40.getDataReadyFlag(isScdReady)) {
+      if(isScdReady) {
+        analogWrite(status_pin, 0);
+        float scdtemptmp;
+        float scdhumiditytmp;
+        uint16_t co2tmp;
+        if(!scd40.readMeasurement(co2tmp, scdtemptmp, scdhumiditytmp)) {
+          if(co2tmp != 0) {
+            Serial.println(co2tmp); //debug
+          }
+        }
+      }
+      else {
+        analogWrite(status_pin, 128);
+      }
+    }*/
+  //}
 
   if(!SD.begin(4)) {while(1) {
     analogWrite(status_pin, 0);
@@ -436,9 +457,11 @@ void setup() {
   bme.takeForcedMeasurement();
   //Serial.println(data.PM_SP_UG_2_5);
   Serial.println(bme.readTemperature());
-  bool isScdReady;
-    if(!scd40.getDataReadyFlag(isScdReady)) {
-      if(isScdReady) {
+  scd40.measureSingleShot();
+  scd40.measureSingleShot();
+  bool isScdReadyf;
+    if(!scd40.getDataReadyFlag(isScdReadyf)) {
+      if(isScdReadyf) {
         float scdtemptmp;
         float scdhumiditytmp;
         uint16_t co2tmp;
@@ -967,25 +990,29 @@ void collectData() {
     pm10Accumulator += data.PM_SP_UG_10_0;
     pm10ReadingCounter++;
   }
+  scd40.measureSingleShot();
+  scd40.measureSingleShot();
   bool isScdReady;
-  if(!scd40.getDataReadyFlag(isScdReady)) {
-    if(isScdReady) {
-      float scdtemptmp;
-      float scdhumiditytmp;
-      uint16_t co2tmp;
-      if(!scd40.readMeasurement(co2tmp, scdtemptmp, scdhumiditytmp)) {
-        if(co2tmp != 0) {
-          scdTempAccumulator += scdtemptmp + 273.15;
-          scdTempReadingCounter++;
-          scdHumidityAccumulator += scdhumiditytmp;
-          scdHumidityReadingCounter++;
-          co2Accumulator += co2tmp;
-          co2ReadingCounter++;
-          Serial.println(co2tmp); //debug
+  //while(!isScdReady) {
+    if(!scd40.getDataReadyFlag(isScdReady)) {
+      if(isScdReady) {
+        float scdtemptmp;
+        float scdhumiditytmp;
+        uint16_t co2tmp;
+        if(!scd40.readMeasurement(co2tmp, scdtemptmp, scdhumiditytmp)) {
+          if(co2tmp != 0) {
+            scdTempAccumulator += scdtemptmp + 273.15;
+            scdTempReadingCounter++;
+            scdHumidityAccumulator += scdhumiditytmp;
+            scdHumidityReadingCounter++;
+            co2Accumulator += co2tmp;
+            co2ReadingCounter++;
+            Serial.println(co2tmp); //debug
+          }
         }
       }
     }
-  }
+  //}
   bool isSenReady;
   if(!sen55.readDataReady(isSenReady)) {
     if(isSenReady) {
