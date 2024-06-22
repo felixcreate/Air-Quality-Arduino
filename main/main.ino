@@ -165,11 +165,11 @@ void setup() {
   randomSeed(analogRead(A2)); //seed the pseudo random number generator with the value of a floating pin
   pinMode(status_pin, OUTPUT);
 
-  Serial.begin(9600); //Debug
+  //Serial.begin(9600); //Debug
   Serial1.begin(9600); // Start communication with PMS sensor
   pms.passiveMode();
-  while (!Serial); //
-  Serial.println("start");
+  //while (!Serial); //
+  //Serial.println("start");
 
   Wire.begin();
   Wire.setClock(100000u);
@@ -188,7 +188,7 @@ void setup() {
   bool softreset;
   if(getRTCEpoch() > 1000000000ul) {
     softreset = true;
-    Serial.println("softreset"); //debug
+    //Serial.println("softreset"); //debug
   }
   else {
     softreset = false;
@@ -212,7 +212,7 @@ void setup() {
   pms.requestRead();
   delay(2000);
   if(!pms.readUntil(data, 10000)) {
-    Serial.println("pms no");
+    //Serial.println("pms no");
     if(!softreset) {
       while(1) {
         analogWrite(status_pin, 0);
@@ -335,7 +335,7 @@ void setup() {
   else {
     lastSen55Cleaning = getRTCEpoch();
   }
-  Serial.println(lastSen55Cleaning); //debug
+  //Serial.println(lastSen55Cleaning); //debug
   //setRTCEpoch(1674536397UL);   //debug
   //bme.takeForcedMeasurement();
   //Serial.println(data.PM_SP_UG_2_5);
@@ -350,33 +350,33 @@ void setup() {
   timeClient.setUpdateInterval(0);
   timeClient.begin();
 
-  Serial.println("Connecting to wifi");
+  //Serial.println("Connecting to wifi");
   if(!softreset) {
     while(!connectWiFi(3, 500)) {
-      Serial.println("No wifi");
+      //Serial.println("No wifi");
       analogWrite(status_pin, 0);
       delay(100);
       analogWrite(status_pin, 255);
       delay(100);
     }
-    Serial.println("Getting ntp");
+    //Serial.println("Getting ntp");
     while(!getNTPTime(5, 100)) {
-      Serial.println("No ntp");
+      //Serial.println("No ntp");
       analogWrite(status_pin, 0);
       delay(100);
       analogWrite(status_pin, 255);
       delay(100);
     }
-    Serial.println("Network ok");
+    //Serial.println("Network ok");
     setRTCEpoch(timeClient.getEpochTime());
     //startupEpoch = timeClient.getEpochTime();
 
-    Serial.println("Sending startup message");
+    //Serial.println("Sending startup message");
     if(connectMQTT(timeClient.getEpochTime())) {
       if(mqttClient.beginMessage("airquality/hamhigh1/startup", 1, false, 1)) {
         mqttClient.write('_');
         if(mqttClient.endMessage()) {
-          Serial.println("Message sent");
+          //Serial.println("Message sent");
         }
       }
       mqttClient.stop();
@@ -450,14 +450,14 @@ void setup() {
   //digitalWrite(LED_BUILTIN, HIGH);
 
 
-  Serial.println(timeClient.getFormattedTime()); // debug
-  Serial.println(getRTCEpoch());
-  Serial.println(readingStartEdge);
+  //Serial.println(timeClient.getFormattedTime()); // debug
+  //Serial.println(getRTCEpoch());
+  //Serial.println(readingStartEdge);
   //Serial.println(unsentCounter);
-  bme.takeForcedMeasurement();
+  //bme.takeForcedMeasurement();
   //Serial.println(data.PM_SP_UG_2_5);
-  Serial.println(bme.readTemperature());
-  scd40.measureSingleShot();
+  //Serial.println(bme.readTemperature());
+  /*scd40.measureSingleShot();
   scd40.measureSingleShot();
   bool isScdReadyf;
     if(!scd40.getDataReadyFlag(isScdReadyf)) {
@@ -487,21 +487,21 @@ void setup() {
           Serial.println(pm25tmp);
         }
       }
-    }
+    }*/
   //generateJWT(getRTCEpoch());
   //Serial.println(jwt.out);
-  Serial.println(getRTCEpoch());
-  double test[] = {45.6, 34.5, 23, 12.6};
-  double testi[] = {4, 3, 23, 126};
+  //Serial.println(getRTCEpoch());
+  //double test[] = {45.6, 34.5, 23, 12.6};
+  //double testi[] = {4, 3, 23, 126};
   //generateJSON(500, 1000, test, test, test, testi, testi, testi);
   //serializeJson(jsonDocument, Serial);
   //jsonDocument.clear();
-  double test1[] = {78.6, 12.5, 56.2, 56.3};
-  double testi1[] = {41, 23, 83, 5};
+  //double test1[] = {78.6, 12.5, 56.2, 56.3};
+  //double testi1[] = {41, 23, 83, 5};
   //generateJSON(890, 2376, test1, test1, test1, testi1, testi1, testi1);
   //serializeJson(jsonDocument, Serial);
   //jsonDocument.clear();
-  printMemory();
+  //printMemory();
 
   // set mqtt client id hamhigh1   DONE
   // set temp sensor config    DONE
@@ -532,12 +532,12 @@ void loop() {
       }
     }
     readingTriggers = 0;
-    Serial.println("1"); //debug
+    //Serial.println("1"); //debug
     //Serial.println(millis() - start);
     collectData();
 
     if(run15minute) {
-      Serial.println("15"); //debug
+      //Serial.println("15"); //debug
       uint8_t index = ((uint8_t) minuteCounter/15) - 1;
       if(tempReadingCounter != 0) temps[index] = tempAccumulator / tempReadingCounter;
       if(humidityReadingCounter != 0) humidities[index] = humidityAccumulator / humidityReadingCounter;
@@ -561,12 +561,12 @@ void loop() {
     }
     if(minuteCounter > 59) {
       minuteCounter -= 60;
-      Serial.println("60"); //debug
-      printMemory(); // debug
+      //Serial.println("60"); //debug
+      //printMemory(); // debug
       uint32_t endEdgeTime = getRTCEpoch();
       if((hourCounter > 0) && (hourCounter < 23)) {
         if((endEdgeTime - lastSen55Cleaning) > 604800) {
-          Serial.println("cleaning"); // debug
+          //Serial.println("cleaning"); // debug
           sen55.startFanCleaning();
           lastSen55Cleaning = endEdgeTime;
           File lastCleaning = SD.open("clean", O_TRUNC | O_WRITE);
@@ -576,7 +576,7 @@ void loop() {
           }
         }
       }
-      printMemory(); // debug
+      //printMemory(); // debug
 
       StaticJsonDocument<1536> jsonDocument;
       jsonDocument["s"] = readingStartEdge;
@@ -684,9 +684,9 @@ void loop() {
       Nox.add(noxs[2]);
       Nox.add(noxs[3]);
 
-      printMemory(); // debug
+      //printMemory(); // debug
       String readingFilename = String(endEdgeTime, 16);
-      Serial.println(readingFilename); // debug
+      //Serial.println(readingFilename); // debug
       bool stored = false;
       File readingLog = SD.open(readingFilename, O_WRITE | O_CREAT);
       if(readingLog) {
@@ -694,27 +694,27 @@ void loop() {
         readingLog.close();
         stored = true;
       }
-      printMemory(); // debug
+      //printMemory(); // debug
       bool sent = false;
       if(connectWiFi(3, 500)) { // max 16 seconds
-        printMemory(); // debug
+        //printMemory(); // debug
         if(getNTPTime(5, 100)) { // max 5.5 seconds
-          printMemory(); // debug
+          //printMemory(); // debug
           setRTCEpoch(timeClient.getEpochTime());
           if(connectMQTT(timeClient.getEpochTime())) {
-            printMemory(); // debug
+            //printMemory(); // debug
             if(mqttClient.beginMessage("airquality/hamhigh1/data", measureJson(jsonDocument), false, 2)) {
-              printMemory(); // debug
+              //printMemory(); // debug
               WriteBufferingStream bufferedMqtt{mqttClient, 128};
-              printMemory(); // debug
+              //printMemory(); // debug
               serializeJson(jsonDocument, bufferedMqtt);
-              printMemory(); // debug
-              serializeJson(jsonDocument, Serial); // debug
-              printMemory(); // debug
+              //printMemory(); // debug
+              //serializeJson(jsonDocument, Serial); // debug
+              //printMemory(); // debug
               bufferedMqtt.flush();
               if(mqttClient.endMessage()) {
                 sent = true;
-                printMemory(); // debug
+                //printMemory(); // debug
               }
             }
             mqttClient.stop();
@@ -725,14 +725,14 @@ void loop() {
         if(stored) {
           File unsent = SD.open("unsent", O_READ | O_WRITE | O_APPEND);
           if(unsent) {
-            Serial.println("Saving as unsent"); // debug
+            //Serial.println("Saving as unsent"); // debug
             unsent.print(readingFilename);
             unsent.print(';');
             unsent.close();
           }
         }
       }
-      Serial.println("done"); // debug
+      //Serial.println("done"); // debug
       readingStartEdge = endEdgeTime;
       hourCounter++;
       for(int i=0;i<4;i++) {
@@ -762,24 +762,24 @@ void loop() {
         noxs[i] = -1.0;
       }
       if(hourCounter == 24) {  //SHOULD BE 24
-        Serial.println("reseting"); //debug
+        //Serial.println("reseting"); //debug
         NVIC_SystemReset();
       }
     }
     if((minuteCounter > 5) && (minuteCounter < 55)) {
-      Serial.println("tried");
+      //Serial.println("tried");
       File unsent = SD.open("unsent");
-      Serial.println("try open");
+      //Serial.println("try open");
       if(unsent) {
-        Serial.println("opened");
+        //Serial.println("opened");
         if(unsent.size() != 0) {
-          Serial.println("has stuff");
+          //Serial.println("has stuff");
           if(WiFi.status() == WL_CONNECTED) {
             if(getNTPTime(5, 100)) {
               if(connectMQTT(timeClient.getEpochTime())) {
                 char readingName[9] = {'\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0'};
                 unsent.read(readingName, 8);
-                Serial.println(readingName); // debug
+                //Serial.println(readingName); // debug
                 File unsentReading = SD.open(readingName);
                 if(unsentReading) {
                   if(mqttClient.beginMessage("airquality/hamhigh1/unsent", unsentReading.size(), false, 2)) {
@@ -790,16 +790,16 @@ void loop() {
                     unsentReading.close();
                     bufferedMqtt.flush();
                     if(mqttClient.endMessage()) {
-                      Serial.println("next");
+                      //Serial.println("next");
                       File unsentTMP = SD.open("tmp", O_READ | O_WRITE | O_CREAT | O_TRUNC);
                       if(unsentTMP) {
-                        Serial.println("next open");
+                        //Serial.println("next open");
                         unsent.seek(unsent.position() + 1);
                         while(unsent.available()) {
                           char fileBuffer[64];
                           int size = unsent.read(fileBuffer, 64);
                           unsentTMP.write(fileBuffer, size);
-                          printMemory(); // debug
+                          //printMemory(); // debug
                         }
                         unsentTMP.close();
                         unsent.close();
@@ -809,11 +809,11 @@ void loop() {
                           char fileBuffer[64];
                           int size = unsentTMP.read(fileBuffer, 64);
                           unsent.write(fileBuffer, size);
-                          printMemory(); // debug
+                          //printMemory(); // debug
                         }
                         unsent.close();
                         unsentTMP.close();
-                        printMemory(); // debug
+                        //printMemory(); // debug
                       }
                     }
                   }
@@ -827,15 +827,15 @@ void loop() {
         unsent.close();
       }
     }
-    printMemory(); // debug
+    //printMemory(); // debug
   }
   else if(readingTriggers > 2) {
-    Serial.println("overtime");
+    //Serial.println("overtime");
     readingTriggers = 0;
     analogWrite(status_pin, 255);
     delay(250);
     analogWrite(status_pin, 0);
-    Serial.println("reset");
+    //Serial.println("reset");
     minuteCounter = 1;
     readingStartEdge = getRTCEpoch() - 60;
     tempReadingCounter = humidityReadingCounter = pressureReadingCounter = pm1ReadingCounter = pm25ReadingCounter = pm10ReadingCounter = scdTempReadingCounter = scdHumidityReadingCounter = co2ReadingCounter = senpm1ReadingCounter = senpm25ReadingCounter = senpm4ReadingCounter = senpm10ReadingCounter = senTempReadingCounter = senHumidityReadingCounter = vocReadingCounter = noxReadingCounter = tempAccumulator = humidityAccumulator = pressureAccumulator = pm1Accumulator = pm25Accumulator = pm10Accumulator = scdTempAccumulator = scdHumidityAccumulator = co2Accumulator = senpm1Accumulator = senpm25Accumulator = senpm4Accumulator = senpm10Accumulator = senTempAccumulator = senHumidityAccumulator = vocAccumulator = noxAccumulator = 0;
@@ -859,7 +859,7 @@ void loop() {
       noxs[i] = -1.0;
     }
     collectData();
-    Serial.println("back to normal");
+    //Serial.println("back to normal");
   }
   //if((millis() - lastMillis) >= 5000) {
     //lastMillis = millis();
@@ -939,18 +939,18 @@ bool getNTPTime(int8_t tries, uint32_t wait) {
 }
 
 int connectMQTT(uint32_t now) {
-  printMemory(); // debug
-  Serial.print("Attempting to connect to MQTT broker: "); // debug
-  Serial.println(" "); // debug
-  printMemory(); // debug
+  //printMemory(); // debug
+  //Serial.print("Attempting to connect to MQTT broker: "); // debug
+  //Serial.println(" "); // debug
+  //printMemory(); // debug
   generateJWT(now);
   mqttClient.setUsernamePassword("unused", jwt.out);
-  printMemory(); // debug
+  //printMemory(); // debug
 
   return mqttClient.connect(broker, 1883);
 
-  Serial.println("You're connected to the MQTT broker"); // debug
-  Serial.println(); // debug
+  //Serial.println("You're connected to the MQTT broker"); // debug
+  //Serial.println(); // debug
 }
 void generateJWT(uint32_t now) {
   StaticJsonDocument<256> jwtpayload;
@@ -964,7 +964,7 @@ void generateJWT(uint32_t now) {
   jwt.encodeJWT(jsonpayload);
 }
 void publishMessage() {
-  Serial.println("Publishing message");
+  //Serial.println("Publishing message");
 
   mqttClient.beginMessage("test", false, 2, false);
   mqttClient.print("hello ");
@@ -1007,7 +1007,7 @@ void collectData() {
             scdHumidityReadingCounter++;
             co2Accumulator += co2tmp;
             co2ReadingCounter++;
-            Serial.println(co2tmp); //debug
+            //Serial.println(co2tmp); //debug
           }
         }
       }
@@ -1045,8 +1045,8 @@ void collectData() {
           noxAccumulator += noxtmp;
           noxReadingCounter++;
         }
-        Serial.println(pm25tmp);
-        Serial.println(noxtmp);
+        //Serial.println(pm25tmp);
+        //Serial.println(noxtmp);
       }
     }
   }
@@ -1111,7 +1111,7 @@ void collectData() {
 }*/
 
 // debug
-#ifdef __arm__
+/*#ifdef __arm__
 // should use uinstd.h to define sbrk but Due causes a conflict
 extern "C" char* sbrk(int incr);
 #else  // __ARM__
@@ -1133,5 +1133,5 @@ void printMemory() {
   Serial.print(F("Free Memory: "));
   Serial.print(freeMemory());
   Serial.println(F("B"));
-}
+}*/
 // debug
